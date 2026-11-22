@@ -1,0 +1,200 @@
+/* AtmosQI — Cyber-Atmospheric Command & Control HUD Styles */
+
+:root {
+  --hud-bg-dark: #040a14;
+  --hud-bg-panel: rgba(5, 14, 24, 0.94);
+  --hud-border-cyan: rgba(34, 211, 238, 0.25);
+  --hud-border-bright: #22d3ee;
+  --hud-glow-cyan: 0 0 14px rgba(34, 211, 238, 0.35);
+  --hud-neon-green: #10b981;
+  --hud-neon-amber: #eab308;
+  --hud-neon-orange: #f97316;
+  --hud-font-mono: 'Space Mono', 'Consolas', 'Courier New', monospace;
+}
+
+/* Tactical HUD Panels */
+.hud-panel {
+  background: var(--hud-bg-panel);
+  border: 1px solid var(--hud-border-cyan);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+  position: relative;
+}
+
+/* Corner Bracket Accents */
+.hud-corner-bracket::before,
+.hud-corner-bracket::after {
+  content: '';
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-color: var(--hud-border-bright);
+  pointer-events: none;
+}
+
+.hud-corner-bracket::before {
+  top: -1px;
+  left: -1px;
+  border-top: 1.5px solid var(--hud-border-bright);
+  border-left: 1.5px solid var(--hud-border-bright);
+}
+
+.hud-corner-bracket::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 1.5px solid var(--hud-border-bright);
+  border-right: 1.5px solid var(--hud-border-bright);
+}
+
+/* Top Right & Bottom Left Brackets */
+.hud-corner-bracket-alt::before {
+  top: -1px;
+  right: -1px;
+  border-top: 1.5px solid var(--hud-border-bright);
+  border-right: 1.5px solid var(--hud-border-bright);
+}
+
+.hud-corner-bracket-alt::after {
+  bottom: -1px;
+  left: -1px;
+  border-bottom: 1.5px solid var(--hud-border-bright);
+  border-left: 1.5px solid var(--hud-border-bright);
+}
+
+/* Technical Label */
+.hud-label {
+  font-family: var(--hud-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #22d3ee;
+  opacity: 0.9;
+}
+
+/* High-Tech Glowing Status Badge */
+.hud-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  background: rgba(34, 211, 238, 0.08);
+  border: 1px solid rgba(34, 211, 238, 0.28);
+  border-radius: 2px;
+  font-family: var(--hud-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: #22d3ee;
+}
+
+.hud-led {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+.hud-led.green {
+  background-color: var(--hud-neon-green);
+  box-shadow: 0 0 6px var(--hud-neon-green);
+}
+
+.hud-led.cyan {
+  background-color: #22d3ee;
+  box-shadow: 0 0 6px #22d3ee;
+}
+
+.hud-led.amber {
+  background-color: var(--hud-neon-amber);
+  box-shadow: 0 0 6px var(--hud-neon-amber);
+}
+
+/* Pure GPU-Accelerated Radar Sweep (Zero React Lag) */
+@keyframes radar-sweep-continuous {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.gpu-radar-sweep {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    rgba(34, 211, 238, 0) 0deg,
+    rgba(34, 211, 238, 0) 280deg,
+    rgba(34, 211, 238, 0.12) 330deg,
+    rgba(34, 211, 238, 0.55) 360deg
+  );
+  animation: radar-sweep-continuous 4s linear infinite;
+  will-change: transform;
+  pointer-events: none;
+}
+
+/* Equalizer Slider Controls */
+.hud-slider-vertical {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 4px;
+  background: rgba(34, 211, 238, 0.18);
+  outline: none;
+  border-radius: 2px;
+  cursor: pointer;
+  writing-mode: bt-lr;
+  -webkit-appearance: slider-vertical;
+}
+
+.hud-slider-vertical::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #22d3ee;
+  border: 1.5px solid #040a14;
+  box-shadow: 0 0 8px #22d3ee;
+  cursor: pointer;
+}
+
+/* Spectrum Equalizer Bar */
+.hud-spectrum-bar-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.hud-spectrum-bar-track {
+  width: 8px;
+  height: 58px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(34, 211, 238, 0.15);
+  border-radius: 1.5px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
+.hud-spectrum-bar-fill {
+  width: 100%;
+  transition: height 0.3s ease;
+  box-shadow: 0 0 6px rgba(34, 211, 238, 0.3);
+}
+
+/* Scrollbar for HUD */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(4, 10, 20, 0.85);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(34, 211, 238, 0.3);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(34, 211, 238, 0.6);
+}

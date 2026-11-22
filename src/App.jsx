@@ -1,20 +1,20 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useDeferredValue } from 'react';
 import MapView from './components/MapView';
-import GoogleMapsOmnibox from './components/GoogleMapsOmnibox';
-import GoogleMapsSideNav from './components/GoogleMapsSideNav';
-import GoogleMapsControls from './components/GoogleMapsControls';
+import TacticalHUDOverlay from './components/TacticalHUDOverlay';
+import TacticalBottomDeck from './components/TacticalBottomDeck';
 import StationDrawer from './components/StationDrawer';
 import Legend from './components/Legend';
 import AboutModal from './components/AboutModal';
-import TimelinePlayer from './components/TimelinePlayer';
+import CalculationExplainerModal from './components/CalculationExplainerModal';
 import { fetchLiveAirQuality } from './services/liveAqiService';
 import { findNearestStation } from './services/geoService';
+import { interpolateWindVector } from './services/windService';
 import { computeBackwardTrajectory, computeForwardDispersion } from './services/advectionEngine';
+import './styles/hud.css';
 
 export default function App() {
   const [stations, setStations] = useState([]);
   const [timeseriesCache, setTimeseriesCache] = useState({});
-  const [timelineData, setTimelineData] = useState(null);
   const [selectedStation, setSelectedStation] = useState(null);
   const [liveLocationData, setLiveLocationData] = useState(null);
   const [targetLocation, setTargetLocation] = useState(null);
@@ -23,33 +23,33 @@ export default function App() {
 
   // Atmospheric Wind & Trajectory Engine
   const [windField, setWindField] = useState(null);
-  const [activeTrajectory, setActiveTrajectory] = useState(null); // { type, waypoints, originSector?, ... }
+  const [activeTrajectory, setActiveTrajectory] = useState(null);
 
-  // Modes & Modals
-  const [activeMode, setActiveMode] = useState('stations'); // 'stations' | 'satellite' | 'timeline'
-  const [isWindActive, setIsWindActive] = useState(true); // Atmospheric wind streamlines
-  const [isSideNavOpen, setIsSideNavOpen] = useState(false);
+  // Tactical Modes & Modals
+  const [activeMode, setActiveMode] = useState('stations'); // 'stations' | 'satellite'
+  const [isWindActive, setIsWindActive] = useState(true);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isExplainerOpen, setIsExplainerOpen] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
 
-  // Filters (for Ground Stations mode)
+  // Tactical Filters & Equalizer Sliders
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedState, setSelectedState] = useState('ALL');
   const [selectedBucket, setSelectedBucket] = useState('ALL');
+  const [aqiCeiling, setAqiCeiling] = useState(500);
+  const [windThreshold, setWindThreshold] = useState(12);
 
-  // Timeline State (2018 - 2020)
-  const [timelineIndex, setTimelineIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1); // 1x, 2x, 4x, 8x
+  // React 19 Deferred Values to eliminate slider dragging and typing lag
+  const deferredSearch = useDeferredValue(searchQuery);
+  const deferredCeiling = useDeferredValue(aqiCeiling);
+  const deferredBucket = useDeferredValue(selectedBucket);
 
-  // 1. Fetch Enriched Stations, Sample Timeseries, and Timeline Matrix
+  // 1. Fetch Enriched CPCB Stations & Timeseries
   useEffect(() => {
     async function loadData() {
       try {
-        const [stationsRes, timeseriesRes, timelineRes] = await Promise.all([
+        const [stationsRes, timeseriesRes] = await Promise.all([
           fetch('/data/stations_enriched.json'),
-          fetch('/data/sample_timeseries.json').catch(() => null),
-          fetch('/data/timeline_matrix.json').catch(() => null)
+          fetch('/data/sample_timeseries.json').catch(() => null)
         ]);
 
         if (stationsRes.ok) {
@@ -60,14 +60,6 @@ export default function App() {
           const tsData = await timeseriesRes.json();
           setTimeseriesCache(tsData);
         }
-        if (timelineRes && timelineRes.ok) {
-          const tlData = await timelineRes.json();
-          setTimelineData(tlData);
-          const anomalyIdx = tlData.dates.indexOf('2020-04-15');
-          if (anomalyIdx !== -1) {
-            setTimelineIndex(anomalyIdx);
-          }
-        }
       } catch (err) {
         console.error("Failed to load initial dataset:", err);
       } finally {
@@ -77,79 +69,42 @@ export default function App() {
     loadData();
   }, []);
 
-  // 2. Automated 60fps Playback Engine
-  useEffect(() => {
-    if (!isPlaying || activeMode !== 'timeline' || !timelineData || !timelineData.dates) {
-      return;
-    }
-
-    const intervalMs = Math.max(20, Math.round(180 / playbackSpeed));
-    const timer = setInterval(() => {
-      setTimelineIndex((prev) => {
-        if (prev >= timelineData.dates.length - 1) {
-          setIsPlaying(false);
-          return prev;
-        }
-        return prev + 1;
-      });
-    }, intervalMs);
-
-    return () => clearInterval(timer);
-  }, [isPlaying, activeMode, timelineData, playbackSpeed]);
-
-  // 3. Spacebar Play/Pause & Arrow Key Scrubbing Keyboard Shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (activeMode !== 'timeline' || !timelineData) return;
-      if (e.target.tagName === 'INPUT' && e.target.type === 'text') return;
-
-      if (e.code === 'Space') {
-        e.preventDefault();
-        setIsPlaying((prev) => !prev);
-      } else if (e.code === 'ArrowLeft') {
-        e.preventDefault();
-        setTimelineIndex((prev) => Math.max(0, prev - (e.shiftKey ? 7 : 1)));
-      } else if (e.code === 'ArrowRight') {
-        e.preventDefault();
-        setTimelineIndex((prev) => Math.min(timelineData.dates.length - 1, prev + (e.shiftKey ? 7 : 1)));
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeMode, timelineData]);
-
-  // 4. Extract Available States
-  const availableStates = useMemo(() => {
-    const statesSet = new Set(stations.map(s => s.state).filter(Boolean));
-    return Array.from(statesSet).sort();
-  }, [stations]);
-
-  // 5. Filtered Stations (Live Mode)
+  // 2. High-Performance Deferred Filter (Prevents Leaflet lag during slider drag)
   const filteredStations = useMemo(() => {
     return stations.filter(station => {
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
+      if (deferredSearch) {
+        const q = deferredSearch.toLowerCase();
         const matchesName = station.name?.toLowerCase().includes(q);
         const matchesCity = station.city?.toLowerCase().includes(q);
         const matchesId = station.id?.toLowerCase().includes(q);
         if (!matchesName && !matchesCity && !matchesId) return false;
       }
 
-      if (selectedState !== 'ALL' && station.state !== selectedState) {
-        return false;
+      if (deferredBucket !== 'ALL') {
+        const bucket = station.latest?.aqi_bucket;
+        if (bucket !== deferredBucket) return false;
       }
 
-      if (selectedBucket !== 'ALL') {
-        const bucket = station.latest?.aqi_bucket;
-        if (bucket !== selectedBucket) return false;
+      if (station.latest?.aqi && station.latest.aqi > deferredCeiling) {
+        return false;
       }
 
       return true;
     });
-  }, [stations, searchQuery, selectedState, selectedBucket]);
+  }, [stations, deferredSearch, deferredBucket, deferredCeiling]);
 
-  // 6. Handle Geolocation: "My Live Air"
+  // Peak AQI calculation for Top-Right HUD Gauge
+  const peakAqi = useMemo(() => {
+    let maxVal = 219;
+    for (const s of stations) {
+      if (s.latest?.aqi && s.latest.aqi > maxVal) {
+        maxVal = s.latest.aqi;
+      }
+    }
+    return maxVal;
+  }, [stations]);
+
+  // 3. Geolocation: "My Live Air"
   const handleLocateUser = () => {
     if (!navigator.geolocation) {
       alert("Geolocation is not supported by your browser.");
@@ -161,6 +116,8 @@ export default function App() {
       async (pos) => {
         const { latitude, longitude } = pos.coords;
         setTargetLocation({ lat: latitude, lon: longitude, name: 'My Current Location' });
+        mapInstance?.flyTo([latitude, longitude], 12, { duration: 1.0 });
+
         const liveResult = await fetchLiveAirQuality(latitude, longitude);
         setIsLocating(false);
 
@@ -173,24 +130,23 @@ export default function App() {
             nearestStation: nearest
           });
           setSelectedStation(null);
-        } else {
-          alert("Could not fetch live atmospheric data for your coordinates.");
         }
       },
       (err) => {
         setIsLocating(false);
-        console.warn("Geolocation permission denied or timed out:", err);
+        console.warn("Geolocation permission denied, falling back to Delhi NCR:", err);
         handleMapClickLocation(28.6139, 77.2090);
       },
       { timeout: 8000 }
     );
   };
 
-  // 7. Handle Universal Search Place Selection (Google Maps-Style)
+  // 4. Handle Universal Search Place Selection
   const handleSelectUniversalPlace = async (place) => {
     const { latitude, longitude, title, subtitle } = place;
     setSelectedStation(null);
     setTargetLocation({ lat: latitude, lon: longitude, name: title });
+    mapInstance?.flyTo([latitude, longitude], 12, { duration: 1.0 });
     setIsLocating(true);
 
     const liveResult = await fetchLiveAirQuality(latitude, longitude);
@@ -207,7 +163,7 @@ export default function App() {
     }
   };
 
-  // 8. Handle Click on Any Point on Map (Unmonitored Gap Explorer)
+  // 5. Handle Map Click on Any Coordinate in India
   const handleMapClickLocation = async (lat, lon) => {
     setSelectedStation(null);
     const nearest = findNearestStation(lat, lon, stations);
@@ -217,6 +173,7 @@ export default function App() {
       name: nearest ? `Near ${nearest.city || nearest.name.split(',')[0]}` : `${lat.toFixed(3)}°N, ${lon.toFixed(3)}°E`
     });
     setIsLocating(true);
+
     const liveResult = await fetchLiveAirQuality(lat, lon);
     setIsLocating(false);
 
@@ -230,50 +187,35 @@ export default function App() {
     }
   };
 
+  // 6. Handle Station Selection
   const handleSelectStation = useCallback(async (station) => {
     setSelectedStation(station);
     if (station.latitude && station.longitude) {
       setTargetLocation({ lat: station.latitude, lon: station.longitude, name: station.name });
-      // Immediately fetch live real-time air quality telemetry for this station
+      mapInstance?.flyTo([station.latitude, station.longitude], 13, { duration: 1.0 });
+
       const liveResult = await fetchLiveAirQuality(station.latitude, station.longitude);
       if (liveResult.success) {
         setLiveLocationData({
           ...liveResult,
           locationName: station.name,
-          locationSubtitle: `${station.city}, ${station.state} • CPCB Ground Monitor`,
+          locationSubtitle: `${station.city}, ${station.state} • CPCB Ground Node`,
           nearestStation: station
         });
       }
     }
-  }, []);
+  }, [mapInstance]);
 
   const handleCloseDrawer = () => {
     setSelectedStation(null);
     setLiveLocationData(null);
   };
 
-  const handleSelectMilestone = (m) => {
-    setIsPlaying(false);
-  };
-
-  // Map Controls Helpers
-  const handleZoomIn = () => {
-    mapInstance?.zoomIn();
-  };
-
-  const handleZoomOut = () => {
-    mapInstance?.zoomOut();
-  };
-
-  const handleResetView = () => {
-    mapInstance?.flyTo([22.8, 80.5], 5, { duration: 1.2 });
-  };
-
   const handleCenterLocation = (lat, lon) => {
-    mapInstance?.flyTo([lat, lon], 13, { duration: 1.2 });
+    mapInstance?.flyTo([lat, lon], 13, { duration: 1.0 });
   };
 
-  // 9. Lagrangian Trajectory Modeling Handlers
+  // 7. Trajectory Modeling Handlers
   const handleComputeTrajectory = useCallback((type, lat, lon) => {
     if (!lat || !lon) return;
     if (type === 'backward') {
@@ -290,62 +232,45 @@ export default function App() {
   }, []);
 
   return (
-    <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: '#080C14' }}>
-      {/* 1. Google Maps Fullscreen Base Map */}
+    <div style={{
+      position: 'relative',
+      width: '100vw',
+      height: '100vh',
+      overflow: 'hidden',
+      background: '#040a14',
+      fontFamily: "'Space Mono', monospace"
+    }}>
+      {/* 1. Tactical Leaflet GIS Map Canvas */}
       <MapView
         stations={filteredStations}
         selectedStation={selectedStation}
         onSelectStation={handleSelectStation}
         activeMode={activeMode}
         onMapClickLocation={handleMapClickLocation}
-        timelineData={timelineData}
-        timelineIndex={timelineIndex}
         targetLocation={targetLocation}
         onMapReady={setMapInstance}
         isWindActive={isWindActive}
-        onWindLoaded={setWindField}
-        activeTrajectory={activeTrajectory}
-        onClearTrajectory={handleClearTrajectory}
       />
 
-      {/* 2. Floating Top-Left Google Maps Omnibox & Filter Chips (Visible when details drawer is closed) */}
-      {!selectedStation && !liveLocationData && activeMode !== 'timeline' && (
-        <GoogleMapsOmnibox
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          selectedState={selectedState}
-          setSelectedState={setSelectedState}
-          selectedBucket={selectedBucket}
-          setSelectedBucket={setSelectedBucket}
-          availableStates={availableStates}
-          allStations={stations}
-          activeMode={activeMode}
-          setActiveMode={setActiveMode}
-          onSelectStation={handleSelectStation}
-          onSelectUniversalPlace={handleSelectUniversalPlace}
-          onLocateUser={handleLocateUser}
-          isLocating={isLocating}
-          onOpenMenu={() => setIsSideNavOpen(true)}
-          isWindActive={isWindActive}
-          onToggleWind={setIsWindActive}
-        />
-      )}
-
-      {/* 3. Google Maps Side Navigation Drawer Menu (Opened via Hamburger Menu) */}
-      <GoogleMapsSideNav
-        isOpen={isSideNavOpen}
-        onClose={() => setIsSideNavOpen(false)}
+      {/* 2. Top Tactical HUD: System Code, Target Ring, Omnibox, Modes, 63,224 Telemetry Readout */}
+      <TacticalHUDOverlay
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        allStations={stations}
+        onSelectStation={handleSelectStation}
+        onSelectUniversalPlace={handleSelectUniversalPlace}
         activeMode={activeMode}
         setActiveMode={setActiveMode}
-        onLocateUser={handleLocateUser}
-        onResetView={handleResetView}
-        onOpenAbout={() => setIsAboutOpen(true)}
-        stationCount={stations.length}
         isWindActive={isWindActive}
         onToggleWind={setIsWindActive}
+        onLocateUser={handleLocateUser}
+        isLocating={isLocating}
+        onOpenAbout={() => setIsAboutOpen(true)}
+        stationCount={stations.length}
+        peakAqi={peakAqi}
       />
 
-      {/* 4. Google Maps Left-Docked Place / Station Details Panel */}
+      {/* 3. Sliding Inspection Drawer */}
       {(selectedStation || liveLocationData) && (
         <StationDrawer
           station={selectedStation}
@@ -361,73 +286,60 @@ export default function App() {
         />
       )}
 
-      {/* 5. Google Maps Floating Controls: Bottom-Left Layers & Bottom-Right Zoom/Compass/GPS */}
-      {activeMode !== 'timeline' && (
-        <GoogleMapsControls
-          onZoomIn={handleZoomIn}
-          onZoomOut={handleZoomOut}
-          onResetView={handleResetView}
-          onLocateUser={handleLocateUser}
-          isLocating={isLocating}
-          activeMode={activeMode}
-          setActiveMode={setActiveMode}
-          stationCount={stations.length}
-          isWindActive={isWindActive}
-          onToggleWind={setIsWindActive}
-        />
-      )}
+      {/* 4. Tactical Bottom Command Deck (Directly Matching Reference Image) */}
+      <TacticalBottomDeck
+        selectedStation={selectedStation}
+        liveData={liveLocationData}
+        allStations={stations}
+        windField={windField}
+        selectedBucket={selectedBucket}
+        onSelectBucket={setSelectedBucket}
+        aqiCeiling={aqiCeiling}
+        onAqiCeilingChange={setAqiCeiling}
+        windThreshold={windThreshold}
+        onWindThresholdChange={setWindThreshold}
+        isWindActive={isWindActive}
+        onToggleWind={setIsWindActive}
+      />
 
-      {/* 6. Clean Google Maps Style AQI Legend (Bottom-Right) */}
-      {activeMode !== 'timeline' && <Legend />}
+      {/* 5. Compact Tactical Legend (Above Bottom Deck) */}
+      <Legend style={{ bottom: 220, right: 14 }} />
 
-      {/* 7. Interactive Time-Travel Playback Scrubber (Docked at Bottom in Timeline Mode) */}
-      {activeMode === 'timeline' && timelineData && (
-        <TimelinePlayer
-          timelineData={timelineData}
-          currentIndex={timelineIndex}
-          onIndexChange={setTimelineIndex}
-          isPlaying={isPlaying}
-          onTogglePlay={() => setIsPlaying((p) => !p)}
-          speed={playbackSpeed}
-          onSpeedChange={setPlaybackSpeed}
-          onClose={() => {
-            setActiveMode('stations');
-            setIsPlaying(false);
-          }}
-          onSelectMilestone={handleSelectMilestone}
-        />
-      )}
-
-      {/* 8. About & Standards Modal */}
+      {/* 6. Modals */}
       <AboutModal
         isOpen={isAboutOpen}
         onClose={() => setIsAboutOpen(false)}
       />
 
-      {/* 9. Loading Overlay */}
+      <CalculationExplainerModal
+        isOpen={isExplainerOpen}
+        onClose={() => setIsExplainerOpen(false)}
+      />
+
+      {/* 7. Loading Screen */}
       {isLoading && (
         <div style={{
           position: 'absolute',
           inset: 0,
-          background: 'rgba(8, 12, 20, 0.95)',
-          zIndex: 3000,
+          background: 'rgba(4, 10, 20, 0.96)',
+          zIndex: 4000,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 16
+          gap: 14
         }}>
           <div style={{
-            width: 48,
-            height: 48,
+            width: 44,
+            height: 44,
             borderRadius: '50%',
-            border: '3px solid rgba(6, 182, 212, 0.2)',
-            borderTopColor: '#06B6D4',
+            border: '2px solid rgba(34, 211, 238, 0.2)',
+            borderTopColor: '#22d3ee',
             animation: 'spin 1s linear infinite'
           }} />
           <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#94A3B8', fontFamily: 'var(--font-display)' }}>
-            Loading AtmosQI Maps & Atmospheric Registry...
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#22d3ee', letterSpacing: '0.12em' }}>
+            INITIALIZING TACTICAL AIRSPACE // CPCB PAN-INDIA MATRIX...
           </span>
         </div>
       )}
