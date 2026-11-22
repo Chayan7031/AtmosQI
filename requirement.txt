@@ -1,0 +1,87 @@
+Weather and meteorological factors:
+Temperature	Influences chemical reactions and ozone formation
+Humidity	Changes particle size and aerosol formation
+Wind speed	Disperses or transports pollutants
+Wind direction	Determines where pollution travels
+Atmospheric pressure	Influences weather systems and air movement
+Rainfall	Removes some airborne particles
+Solar radiation	Drives photochemical ozone formation
+Cloud cover	Changes solar radiation and atmospheric chemistry
+Visibility	Can indicate haze, dust and aerosol loading
+Boundary layer height	Determines the volume of air available for pollutant dilution
+Temperature inversion	Traps pollutants close to the ground
+
+
+Geographic and environmental factors:
+Latitude	Influences solar radiation and seasonal patterns
+Altitude	Affects atmospheric pressure and dispersion
+Terrain	Mountains and valleys can trap pollution
+Distance from sea	Influences humidity and sea-breeze circulation
+Vegetation	Can capture some particles and influence local microclimates
+Urban density	Influences traffic, energy use and ventilation
+Building height	Can obstruct airflow and create street-canyon effects
+Land-use pattern	Influences pollution sources and exposure
+Soil characteristics	Influence dust generation
+Water bodies	Influence local temperature and humidity
+
+
+Human activities and pollution sources:
+Road traffic	PM2.5, PM10, NO₂, CO
+Industries	PM, SO₂, NO₂, CO
+Thermal power plants	PM, SO₂, NOx
+Construction	PM10, PM2.5
+Agricultural burning	PM2.5, PM10, CO
+Waste burning	PM, CO, VOCs, NOx
+Household cooking	PM2.5, CO
+Diesel generators	PM2.5, NOx, CO
+Mining	PM10, PM2.5
+Fertilizer usage	NH₃
+Livestock farming	NH₃
+Petroleum refineries	VOCs, SO₂, NOx
+
+
+D. Chemical and atmospheric components
+These are especially important because some pollutants are formed in the atmosphere rather than emitted directly.
+Component	Role
+NOx	Participates in ozone and nitrate aerosol formation
+VOCs	React with NOx to produce ground-level ozone
+SO₂ oxidation	Produces sulfate particles
+NH₃ reactions	Produces ammonium aerosols
+Atmospheric oxidants	Drive secondary pollutant formation
+Aerosol formation	Creates secondary PM2.5
+Photochemical reactions	Produce ozone and other secondary pollutants
+Biomass-burning emissions	Produce primary particles and chemical precursors
+
+
+How AQI is actually calculated
+For India's CPCB methodology, each pollutant concentration is converted into an individual sub-index using pollutant-specific breakpoints.
+
+The interpolation formula is:
+\[
+I_p=\frac{I_{HI}-I_{LO}}{B_{HI}-B_{LO}}
+(C_p-B_{LO})+I_{LO}
+\]
+
+Where:
+- \(I_p\) = Pollutant sub-index
+- \(C_p\) = Measured pollutant concentration
+- \(B_{HI}\) = Upper concentration breakpoint
+- \(B_{LO}\) = Lower concentration breakpoint
+- \(I_{HI}\) = Upper AQI breakpoint
+- \(I_{LO}\) = Lower AQI breakpoint
+The final AQI is:
+\[
+\boxed{AQI=\max(I_{PM2.5},I_{PM10},I_{NO2},\ldots)}
+\]
+
+In other words, the highest valid pollutant sub-index determines the overall AQI. 
+CPCB+1
+
+India's AQI categories
+AQI range	Category
+0–50	Good
+51–100	Satisfactory
+101–200	Moderate
+201–300	Poor
+301–400	Very Poor
+401–500	Severe
