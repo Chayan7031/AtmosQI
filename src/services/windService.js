@@ -20,22 +20,28 @@ export const METEOROLOGICAL_ANCHORS = [
 ];
 
 export function getCardinalDirection(angleDeg) {
+  if (angleDeg === null || angleDeg === undefined || isNaN(angleDeg)) return 'NW';
   const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
   const index = Math.round(((angleDeg % 360) + 360) % 360 / 22.5) % 16;
-  return directions[index];
+  return directions[index] || 'NW';
 }
 
 /**
  * Interpolates wind vectors (u, v, speed, dir) for any arbitrary point in India using Inverse Distance Weighting
  */
 export function interpolateWindVector(targetLat, targetLon, customAnchors = METEOROLOGICAL_ANCHORS) {
+  const anchors = (Array.isArray(customAnchors) && customAnchors.length > 0) ? customAnchors : METEOROLOGICAL_ANCHORS;
   let totalWeight = 0;
   let weightedU = 0;
   let weightedV = 0;
 
-  for (const anchor of customAnchors) {
-    const dLat = targetLat - anchor.lat;
-    const dLon = targetLon - anchor.lon;
+  const lat = (targetLat !== null && targetLat !== undefined && !isNaN(targetLat)) ? parseFloat(targetLat) : 22.8;
+  const lon = (targetLon !== null && targetLon !== undefined && !isNaN(targetLon)) ? parseFloat(targetLon) : 80.5;
+
+  for (const anchor of anchors) {
+    if (!anchor || typeof anchor.lat !== 'number' || typeof anchor.lon !== 'number') continue;
+    const dLat = lat - anchor.lat;
+    const dLon = lon - anchor.lon;
     const distSq = dLat * dLat + dLon * dLon;
 
     if (distSq < 0.0001) {
@@ -44,18 +50,19 @@ export function interpolateWindVector(targetLat, targetLon, customAnchors = METE
         v: anchor.v,
         speed: anchor.speed,
         dir: anchor.dir,
+        direction: anchor.dir,
         cardinal: getCardinalDirection(anchor.dir)
       };
     }
 
-    const weight = 1 / Math.pow(distSq, 1.2);
+    const weight = 1 / Math.pow(Math.max(0.001, distSq), 1.2);
     totalWeight += weight;
-    weightedU += anchor.u * weight;
-    weightedV += anchor.v * weight;
+    weightedU += (anchor.u || 0) * weight;
+    weightedV += (anchor.v || 0) * weight;
   }
 
-  const u = weightedU / totalWeight;
-  const v = weightedV / totalWeight;
+  const u = totalWeight > 0 ? weightedU / totalWeight : 1.5;
+  const v = totalWeight > 0 ? weightedV / totalWeight : -1.0;
   const speed = Math.round(Math.sqrt(u * u + v * v) * 10) / 10;
   let dir = Math.round((Math.atan2(-u, -v) * 180) / Math.PI);
   if (dir < 0) dir += 360;
@@ -65,6 +72,7 @@ export function interpolateWindVector(targetLat, targetLon, customAnchors = METE
     v,
     speed,
     dir,
+    direction: dir,
     cardinal: getCardinalDirection(dir)
   };
 }

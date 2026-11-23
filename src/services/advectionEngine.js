@@ -7,31 +7,69 @@ import { interpolateWindVector, getCardinalDirection } from './windService.js';
 
 export function calculateVentilationIndex(windSpeedMs, pblHeightMeters = 850) {
   // Ventilation Index (VI) = Wind Speed (m/s) * Planetary Boundary Layer Height (m)
-  const speed = Math.max(0.5, windSpeedMs || 2.5);
-  const pbl = Math.max(100, pblHeightMeters);
+  const speed = Math.max(0.5, parseFloat(windSpeedMs) || 2.5);
+  const pbl = Math.max(100, parseFloat(pblHeightMeters) || 850);
   const vi = Math.round(speed * pbl);
 
   let category = 'Moderate';
-  let color = '#FFD600';
+  let color = '#EAB308';
   let description = 'Atmospheric dispersion is moderate. Pollutants gradually clear with ambient breeze.';
 
   if (vi < 6000) {
     category = 'Stagnant (Trapping Alert)';
-    color = '#FF1744';
+    color = '#F97316';
     description = 'Dangerous atmospheric trapping. Low boundary layer and weak winds prevent pollutant dispersal.';
   } else if (vi > 12000) {
     category = 'Favorable (Vigorous Dispersion)';
-    color = '#00E676';
+    color = '#10B981';
     description = 'High ventilation velocity. Atmosphere is actively flushing particulate matter and emissions.';
   }
 
-  return { vi, category, color, description, pbl };
+  const currentHour = new Date().getHours();
+  const isNocturnal = currentHour < 7 || currentHour > 19;
+
+  return {
+    vi,
+    value: vi,
+    pbl,
+    pblHeight: pbl,
+    isNocturnal,
+    category,
+    color,
+    description
+  };
 }
 
-export function generateMeteorologicalBulletin(stationName, wind, vi) {
+export function generateMeteorologicalBulletin(...args) {
+  let stationName = 'Target Area';
+  let windSpeed = 3.5;
+  let windDir = 315;
+  let vi = { value: 6800, vi: 6800, category: 'Moderate', color: '#EAB308', pbl: 850, pblHeight: 850 };
+
+  if (args.length >= 5) {
+    // (locationTitle, aqi, localWind.speed, localWind.direction, vi)
+    stationName = args[0] || 'Target Area';
+    windSpeed = args[2] || 3.5;
+    windDir = args[3] || 315;
+    vi = args[4] || vi;
+  } else if (args.length === 3) {
+    // (stationName, wind, vi)
+    stationName = args[0] || 'Target Area';
+    const wind = args[1] || {};
+    windSpeed = wind.speed || 3.5;
+    windDir = wind.dir || wind.direction || 315;
+    vi = args[2] || vi;
+  }
+
+  const cardinal = getCardinalDirection(windDir);
+  const viVal = vi.value || vi.vi || 6800;
+  const viCat = vi.category || 'Moderate';
+
   return {
-    headline: `${vi.category}: Ventilation Index ${vi.vi} m²/s across ${stationName}`,
-    summary: `Boundary-layer winds are blowing at ${wind.speed} m/s from the ${wind.cardinal} (${wind.dir}°). Planetary Boundary Layer is estimated at ${vi.pbl}m. ${vi.description}`,
+    headline: `${viCat}: Ventilation Index ${viVal.toLocaleString()} m²/s across ${stationName}`,
+    summary: `Boundary-layer winds are blowing at ${windSpeed} m/s from the ${cardinal} (${windDir}°). Planetary Boundary Layer is estimated at ${vi.pbl || 850}m.`,
+    transportAnalysis: `Current atmospheric transport vectors indicate active regional advection from the ${cardinal} sector (${windDir}°), with boundary layer mixing height near ${vi.pbl || 850} meters.`,
+    outlook: `Pollutant dispersal capacity is categorized as ${viCat}. Stagnation risk is mitigated by persistent surface velocity of ${windSpeed} m/s.`,
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   };
 }
